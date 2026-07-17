@@ -1,1 +1,170 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#07111f"><title>大A分析小助手 · A-Insight</title><style>html,body{margin:0;min-height:100%;background:#07111f;color:#f5f8fc;font-family:system-ui,"Microsoft YaHei",sans-serif}.boot{min-height:100vh;display:grid;place-items:center}.box{text-align:center}.orb{width:54px;height:54px;margin:auto;border:2px solid #263b5a;border-top-color:#5a8cff;border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}p{color:#8ea5bf;font-size:13px}</style></head><body><div class="boot"><div class="box"><div class="orb"></div><h2>A-Insight</h2><p>正在加载大A分析小助手…</p></div></div><script>(async()=>{try{const names=['payload1.txt','payload2.txt','payload3.txt','payload4.txt'];const b64=(await Promise.all(names.map(n=>fetch('./'+n,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(r.status);return r.text()})))).join('');const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));const ds=new DecompressionStream('gzip');const html=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).text();const addons='<script src="./fix-market.js?v=20260717-1"><\/script><script src="./free-ai.js?v=20260717-2"><\/script>';const patched=html.includes('</body>')?html.replace('</body>',addons+'</body>'):html+addons;document.open();document.write(patched);document.close()}catch(e){document.body.innerHTML='<div class="boot"><div class="box"><h2>页面加载失败</h2><p>'+String(e)+'</p><button onclick="location.reload()">重新加载</button></div></div>'}})();</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <title>大A分析小助手 · A-Insight</title>
+  <style>
+    html,body{margin:0;min-height:100%;background:#07111f;color:#f5f8fc;font-family:system-ui,"Microsoft YaHei",sans-serif}
+    .boot{min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box}
+    .box{width:min(460px,100%);text-align:center}
+    .orb{width:54px;height:54px;margin:auto;border:2px solid #263b5a;border-top-color:#5a8cff;border-radius:50%;animation:s .8s linear infinite}
+    @keyframes s{to{transform:rotate(360deg)}}
+    h2{margin:18px 0 8px;font-size:24px}
+    p{margin:6px 0;color:#8ea5bf;font-size:13px;line-height:1.7}
+    .progress{height:5px;margin:18px 0 8px;border-radius:999px;background:#13243a;overflow:hidden}
+    .progress>i{display:block;width:12%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#5a8cff,#37d6aa);transition:width .25s ease}
+    .detail{font-size:11px;color:#627994;word-break:break-all}
+    button{margin-top:14px;padding:9px 16px;border:1px solid #385273;border-radius:9px;background:#14263d;color:#f4f7fb;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="boot">
+    <div class="box">
+      <div class="orb" id="loaderOrb"></div>
+      <h2 id="loaderTitle">A-Insight</h2>
+      <p id="loaderText">正在加载大A分析小助手…</p>
+      <div class="progress"><i id="loaderProgress"></i></div>
+      <p class="detail" id="loaderDetail">正在检查网页资源</p>
+    </div>
+  </div>
+  <script>
+  (async()=>{
+    const OWNER='9991314';
+    const REPO='a-share-analysis-assistant';
+    const VERSION='20260717-6';
+    const CACHE_KEY='a-insight-rendered-v6';
+    const title=document.getElementById('loaderTitle');
+    const text=document.getElementById('loaderText');
+    const detail=document.getElementById('loaderDetail');
+    const bar=document.getElementById('loaderProgress');
+
+    const setProgress=(value,message,sub='')=>{
+      if(bar) bar.style.width=Math.max(8,Math.min(100,value))+'%';
+      if(message&&text) text.textContent=message;
+      if(detail) detail.textContent=sub;
+    };
+
+    const sleep=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
+
+    function sources(name){
+      const local=new URL(name,location.href).href;
+      return [
+        local,
+        `https://${OWNER}.github.io/${REPO}/${name}?v=${VERSION}`,
+        `https://cdn.jsdelivr.net/gh/${OWNER}/${REPO}@main/${name}?v=${VERSION}`,
+        `https://raw.githubusercontent.com/${OWNER}/${REPO}/main/${name}`
+      ].filter((url,index,array)=>array.indexOf(url)===index);
+    }
+
+    async function requestText(url,timeoutMs=12000){
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),timeoutMs);
+      try{
+        const response=await fetch(url,{
+          cache:'no-store',
+          credentials:'omit',
+          mode:url.startsWith('file:')?'same-origin':'cors',
+          signal:controller.signal
+        });
+        if(!response.ok) throw new Error(`HTTP ${response.status}`);
+        const value=await response.text();
+        if(!value) throw new Error('空响应');
+        return value;
+      }finally{
+        clearTimeout(timer);
+      }
+    }
+
+    async function fetchText(name){
+      const errors=[];
+      for(const url of sources(name)){
+        for(let attempt=1;attempt<=2;attempt++){
+          try{
+            return await requestText(url);
+          }catch(error){
+            errors.push(`${url} [${attempt}]: ${error?.message||error}`);
+            if(attempt<2) await sleep(350*attempt);
+          }
+        }
+      }
+      throw new Error(`${name} 获取失败\n${errors.join('\n')}`);
+    }
+
+    function safeInlineScript(code){
+      const safe=String(code).replace(/<\/script/gi,'<\\/script');
+      return '<scr'+'ipt>'+safe+'</scr'+'ipt>';
+    }
+
+    async function loadFresh(){
+      if(typeof DecompressionStream==='undefined'){
+        throw new Error('当前浏览器不支持 DecompressionStream，请升级 Chrome、Edge 或 Safari');
+      }
+
+      const names=['payload1.txt','payload2.txt','payload3.txt','payload4.txt'];
+      setProgress(16,'正在读取核心页面','将自动切换 GitHub Pages、jsDelivr 与 GitHub Raw 备用源');
+
+      let finished=0;
+      const chunks=await Promise.all(names.map(async(name)=>{
+        const value=await fetchText(name);
+        finished+=1;
+        setProgress(16+finished*13,`正在读取核心页面 ${finished}/4`,name);
+        return value.trim();
+      }));
+
+      setProgress(72,'正在解压页面资源','本地浏览器解压，不会上传 API Key');
+      const bytes=Uint8Array.from(atob(chunks.join('')),char=>char.charCodeAt(0));
+      const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+      let html=await new Response(stream).text();
+      if(!html||!html.includes('<html')) throw new Error('核心页面解压结果无效');
+
+      setProgress(82,'正在加载功能模块','行情修复与免费 AI 模型选择');
+      const addonNames=['fix-market.js','free-ai.js'];
+      const addonResults=await Promise.allSettled(addonNames.map(fetchText));
+      const addonHtml=addonResults
+        .filter(result=>result.status==='fulfilled')
+        .map(result=>safeInlineScript(result.value))
+        .join('');
+
+      if(addonHtml){
+        html=html.includes('</body>')?html.replace('</body>',addonHtml+'</body>'):html+addonHtml;
+      }
+
+      try{localStorage.setItem(CACHE_KEY,html);}catch(error){console.warn('[A-Insight] 页面缓存写入失败',error);}
+      return html;
+    }
+
+    function render(html){
+      setProgress(100,'加载完成','正在进入工作台');
+      document.open();
+      document.write(html);
+      document.close();
+    }
+
+    try{
+      render(await loadFresh());
+    }catch(error){
+      console.error('[A-Insight] 页面加载失败',error);
+      const cached=localStorage.getItem(CACHE_KEY);
+      if(cached){
+        setProgress(92,'网络资源暂不可用','正在使用上一次成功加载的本地缓存');
+        await sleep(250);
+        render(cached);
+        return;
+      }
+
+      if(document.getElementById('loaderOrb')) document.getElementById('loaderOrb').style.display='none';
+      if(title) title.textContent='页面资源加载失败';
+      if(text) text.textContent='已尝试多个备用源，仍未能取得核心页面文件';
+      if(detail) detail.textContent=String(error?.message||error);
+      if(bar) bar.style.width='100%';
+      const button=document.createElement('button');
+      button.textContent='清除缓存并重新加载';
+      button.onclick=()=>{try{localStorage.removeItem(CACHE_KEY);}catch(e){} location.reload();};
+      document.querySelector('.box')?.appendChild(button);
+    }
+  })();
+  </script>
+</body>
+</html>
